@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../services/api";
+import { clearAuthSession } from "../utils/authSession";
 
 function MenuIcon({ size = 24 }) {
     return (
@@ -117,11 +118,8 @@ export default function Navbar() {
 
     const handleLogout = () => {
         if (typeof window !== "undefined") {
-            localStorage.removeItem("token");
-            localStorage.removeItem("user");
-            localStorage.removeItem("userRole");
-            localStorage.removeItem("role");
-            window.dispatchEvent(new Event(AUTH_EVENT));
+            api.post("/auth/logout").catch(() => {});
+            clearAuthSession();
         }
         setSession(readSession());
         setMobileMenuOpen(false);

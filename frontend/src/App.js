@@ -8,6 +8,7 @@ import HostProfilePage from "./Pages/HostProfilePage";
 import TeamLeaderEventPage from "./Pages/TeamLeaderEventPage";
 import TrainingsPage from "./Pages/TrainingsPage";
 import AboutPage from "./Pages/AboutPage";
+import CompleteProfilePage from "./Pages/CompleteProfilePage";
 
 const RequireRole = ({ role, roles, children }) => {
   const allowedRoles = roles || (role ? [role] : null);
@@ -34,7 +35,15 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/events" element={<EventsPage />} />
+        <Route path="/complete-profile" element={<CompleteProfilePage />} />
+        <Route
+          path="/events"
+          element={
+            <RequireRole role="user">
+              <EventsPage />
+            </RequireRole>
+          }
+        />
         <Route
           path="/admin"
           element={
@@ -67,9 +76,30 @@ function App() {
             </RequireRole>
           }
         />
-        <Route path="/profile" element={<HostProfilePage />} />
-        <Route path="/profile/:hostId" element={<HostProfilePage />} />
-        <Route path="/team-leader/event/:eventId" element={<TeamLeaderEventPage />} />
+        <Route
+          path="/profile"
+          element={
+            <RequireRole role="user">
+              <HostProfilePage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/profile/:hostId"
+          element={
+            <RequireRole roles={["user", "admin"]}>
+              <HostProfilePage />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/team-leader/event/:eventId"
+          element={
+            <RequireRole role="user">
+              <TeamLeaderEventPage />
+            </RequireRole>
+          }
+        />
       </Routes>
     </Router>
   );

@@ -3,8 +3,110 @@ import { useNavigate } from "react-router-dom";
 import { X, Mail, Lock, User, ArrowRight, AlertTriangle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import api, { hostAPI, clientAPI } from "../services/api";
 import useBodyScrollLock from "../hooks/useBodyScrollLock";
+import { getDashboardPath, storeAuthSession } from "../utils/authSession";
 
-const AUTH_EVENT = "gatherly-auth";
+const PENDING_GOOGLE_AUTH_KEY = "pendingGoogleAuth";
+let googleScriptPromise = null;
+
+const loadGoogleScript = () => {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  if (!googleScriptPromise) {
+    googleScriptPromise = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+      if (existing) {
+        existing.addEventListener("load", resolve, { once: true });
+        existing.addEventListener("error", reject, { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.defer = true;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+  return googleScriptPromise;
+};
+
+function GoogleAuthButton({ mode, disabled, onCredential, onUnavailable }) {
+  const containerRef = useRef(null);
+  const callbackRef = useRef(onCredential);
+  const [scriptReady, setScriptReady] = useState(false);
+  const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+
+  useEffect(() => {
+    callbackRef.current = onCredential;
+  }, [onCredential]);
+
+  useEffect(() => {
+    if (!clientId || disabled) return undefined;
+    let cancelled = false;
+
+    loadGoogleScript()
+      .then(() => {
+        if (cancelled) return;
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: (response) => callbackRef.current?.(response),
+        });
+        setScriptReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          onUnavailable?.("Google login could not load. Please check your connection and try again.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId, disabled, onUnavailable]);
+
+  useEffect(() => {
+    if (!scriptReady || !containerRef.current || disabled) return;
+    containerRef.current.innerHTML = "";
+    const width = Math.max(240, Math.min(containerRef.current.clientWidth || 360, 400));
+    window.google.accounts.id.renderButton(containerRef.current, {
+      theme: "outline",
+      size: "large",
+      type: "standard",
+      shape: "rectangular",
+      text: mode === "signup" ? "signup_with" : "signin_with",
+      logo_alignment: "left",
+      width,
+    });
+  }, [scriptReady, mode, disabled]);
+
+  if (!clientId) {
+    return (
+      <button
+        type="button"
+        onClick={() => onUnavailable?.("Google login is not configured yet. Add a Google client ID first.")}
+        className="w-full py-3 rounded-xl border border-gray-200 bg-cream text-gray-700 font-semibold hover:bg-mist transition"
+      >
+        {mode === "signup" ? "Sign up with Google" : "Sign in with Google"}
+      </button>
+    );
+  }
+
+  if (disabled) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="w-full py-3 rounded-xl border border-gray-200 bg-cream text-gray-400 font-semibold"
+      >
+        {mode === "signup" ? "Sign up with Google" : "Sign in with Google"}
+      </button>
+    );
+  }
+
+  return <div ref={containerRef} className="w-full min-h-[44px] flex justify-center" />;
+}
+
 const INITIAL_FORM = {
   firstName: "",
   lastName: "",
@@ -33,6 +135,12 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
   useBodyScrollLock(show);
 
   useEffect(() => {
+    if (show) {
+      setActiveRole(initialRole);
+    }
+  }, [initialRole, show]);
+
+  useEffect(() => {
     setShowPassword(false);
     setShowConfirmPassword(false);
   }, [isSignUp, show]);
@@ -51,6 +159,57 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
     { id: "admin", label: "Admin"},
   ];
   const visibleRoles = isSignUp ? roles.filter((role) => role.id !== "admin") : roles;
+  const googleEnabledForRole = ["host", "client"].includes(activeRole);
+
+  const handleAuthSuccess = (data) => {
+    const session = storeAuthSession(data);
+    onClose();
+    navigate(getDashboardPath(session.role));
+  };
+
+  const handleGoogleCredential = async (credentialResponse) => {
+    setStatus(null);
+
+    if (!googleEnabledForRole) {
+      setStatus({ type: "error", text: "Google authentication is available for hosts and clients only." });
+      return;
+    }
+
+    if (!credentialResponse?.credential) {
+      setStatus({ type: "error", text: "Failed Google login. Please try again." });
+      return;
+    }
+
+    try {
+      const response = await api.post("/auth/google", {
+        credential: credentialResponse.credential,
+        role: activeRole,
+        mode: isSignUp ? "signup" : "signin",
+      });
+
+      if (response.data?.requiresProfile) {
+        sessionStorage.setItem(
+          PENDING_GOOGLE_AUTH_KEY,
+          JSON.stringify({
+            credential: credentialResponse.credential,
+            role: activeRole,
+            mode: isSignUp ? "signup" : "signin",
+            missingFields: response.data.missingFields || [],
+            googleProfile: response.data.googleProfile || {},
+            expiresAt: response.data.expiresAt,
+          })
+        );
+        onClose();
+        navigate("/complete-profile");
+        return;
+      }
+
+      handleAuthSuccess(response.data);
+    } catch (err) {
+      const message = err.response?.data?.message || "Failed Google login. Please try again.";
+      setStatus({ type: "error", text: message });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -126,15 +285,12 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
         role: apiRole,
       });
 
-      const storedUser = { ...response.data.user, role: frontendRole };
-      localStorage.setItem("token", response.data.token);
-      localStorage.setItem("user", JSON.stringify(storedUser));
-      localStorage.setItem("role", frontendRole);
-      localStorage.setItem("userRole", roleLabel);
-      window.dispatchEvent(new Event(AUTH_EVENT));
-
-      onClose();
-      navigate(activeRole === "admin" ? "/admin" : activeRole === "client" ? "/client" : "/events");
+      handleAuthSuccess({
+        token: response.data.token,
+        user: response.data.user,
+        role: frontendRole,
+        userRole: roleLabel,
+      });
     } catch (err) {
       const message = err.response?.data?.message || "Login failed. Please try again.";
       setStatus({ type: "error", text: message });
@@ -234,6 +390,21 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
           {renderStatus()}
+          {googleEnabledForRole && (
+            <div className="space-y-3">
+              <GoogleAuthButton
+                mode={isSignUp ? "signup" : "signin"}
+                disabled={!googleEnabledForRole}
+                onCredential={handleGoogleCredential}
+                onUnavailable={(message) => setStatus({ type: "error", text: message })}
+              />
+              <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-gray-400 font-semibold">
+                <span className="h-px flex-1 bg-gray-200" />
+                <span>or use email</span>
+                <span className="h-px flex-1 bg-gray-200" />
+              </div>
+            </div>
+          )}
           {isSignUp && (
             <div className="grid grid-cols-2 gap-3">
               <div>
