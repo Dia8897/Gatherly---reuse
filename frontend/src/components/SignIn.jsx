@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Mail, Lock, User, ArrowRight, AlertTriangle, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { X, Mail, Lock, User, ArrowRight, AlertTriangle, CheckCircle2, Eye, EyeOff, Upload } from "lucide-react";
 import api, { hostAPI, clientAPI } from "../services/api";
 import useBodyScrollLock from "../hooks/useBodyScrollLock";
 
@@ -27,7 +27,10 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
   const [status, setStatus] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [profilePicPreview, setProfilePicPreview] = useState(null);
   const statusRef = useRef(null);
+  const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
   useBodyScrollLock(show);
@@ -35,6 +38,8 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
   useEffect(() => {
     setShowPassword(false);
     setShowConfirmPassword(false);
+    setSelectedFile(null);
+    setProfilePicPreview(null);
   }, [isSignUp, show]);
 
   useEffect(() => {
@@ -77,10 +82,21 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
         };
         let response;
           if (activeRole === "host") {
+            // Convert file to base64 if selected
+            let profilePicData = undefined;
+            if (selectedFile) {
+              profilePicData = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(selectedFile);
+              });
+            }
+
             const payload = {
               ...commonPayload,
               clothingSize: formData.clothingSize,
-              profilePic: formData.profilePic?.trim() || undefined,
+              profilePic: profilePicData || formData.profilePic?.trim() || undefined,
               description: formData.description?.trim() || undefined,
             };
             response = await hostAPI.signupHost(payload);
@@ -104,6 +120,8 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
             ...INITIAL_FORM,
             email: createdEmail,
           }));
+          setSelectedFile(null);
+          setProfilePicPreview(null);
         } catch (err) {
           const message = err.response?.data?.message || "Sign-up failed";
           const validationErrors = err.response?.data?.errors;
@@ -144,6 +162,28 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
   const handleInputChange = (field) => (e) => {
     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
     if (status) setStatus(null);
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = () => {
+        setProfilePicPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+    if (status) setStatus(null);
+  };
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setProfilePicPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleRoleSelect = (roleId) => {
@@ -390,14 +430,47 @@ export default function AuthModal({ show, onClose, initialRole = "host" }) {
               </div>
               {activeRole === "host" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo URL (optional)</label>
-                  <input
-                    type="text"
-                    value={formData.profilePic}
-                    onChange={handleInputChange("profilePic")}
-                    placeholder="https://..."
-                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Profile Photo (optional)</label>
+                  <div className="space-y-3">
+                    {/* File Input */}
+                    <div className="relative">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-xl hover:border-ocean hover:bg-ocean/5 transition-colors group"
+                      >
+                        <Upload size={20} className="text-gray-400 group-hover:text-ocean" />
+                        <span className="text-sm text-gray-600 group-hover:text-ocean">
+                          {selectedFile ? selectedFile.name : "Choose profile photo"}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Preview */}
+                    {profilePicPreview && (
+                      <div className="relative inline-block">
+                        <img
+                          src={profilePicPreview}
+                          alt="Profile preview"
+                          className="w-20 h-20 rounded-xl object-cover border-2 border-gray-200"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleRemoveFile}
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               {activeRole === "host" && (

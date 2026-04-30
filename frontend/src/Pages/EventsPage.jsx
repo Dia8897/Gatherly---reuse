@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import ApplyModal from "../components/ApplyModal";
 import EventDetailsModal from "../components/EventDetailsModal";
+import CodeOfConductModal from "../components/CodeOfConductModal";
 import api, { hostAPI } from "../services/api";
 
 const AUTH_EVENT = "gatherly-auth";
@@ -217,6 +218,7 @@ export default function EventsPage() {
   };
 
   const [isApplyOpen, setIsApplyOpen] = useState(false);
+  const [showCodeOfConductModal, setShowCodeOfConductModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const [detailsEvent, setDetailsEvent] = useState(null);
@@ -461,9 +463,35 @@ export default function EventsPage() {
     return () => clearTimeout(timer);
   }, [lastApplication]);
 
+  const handleAcceptCodeOfConduct = async () => {
+    if (!loggedInUser) return;
+    setHostActionError("");
+    setHostActionLoading(true);
+    try {
+      await hostAPI.acceptCodeOfConduct(loggedInUser.userId);
+      const updatedUser = {
+        ...loggedInUser,
+        codeOfConductAccepted: true,
+      };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      window.dispatchEvent(new Event(AUTH_EVENT));
+      setLoggedInUser(updatedUser);
+      setShowCodeOfConductModal(false);
+    } catch (err) {
+      setHostActionError(
+        err.response?.data?.message ||
+          "Failed to accept the Code of Conduct."
+      );
+    } finally {
+      setHostActionLoading(false);
+    }
+  };
+
   const renderLifecycleGate = () => {
     if (!loggedInUser || loggedInUser.role !== "user") return null;
     if (lifecycleState === "ready") return null;
+
+    console.log('Lifecycle state:', lifecycleState, 'User:', loggedInUser);
 
     if (lifecycleState === "blocked") {
       return (
@@ -476,44 +504,32 @@ export default function EventsPage() {
 
     if (lifecycleState === "needs-coc") {
       return (
-        <LifecycleNotice
-          title="Accept the Code of Conduct"
-          description="To continue onboarding, please review and accept the agency's Code of Conduct. This is required before the team reviews your profile."
-        >
-          {hostActionError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm px-4 py-3">
-              {hostActionError}
-            </div>
-          )}
-          <button
-            onClick={async () => {
-              if (!loggedInUser) return;
-              setHostActionError("");
-              setHostActionLoading(true);
-              try {
-                await hostAPI.acceptCodeOfConduct(loggedInUser.userId);
-                const updatedUser = {
-                  ...loggedInUser,
-                  codeOfConductAccepted: true,
-                };
-                localStorage.setItem("user", JSON.stringify(updatedUser));
-                window.dispatchEvent(new Event(AUTH_EVENT));
-                setLoggedInUser(updatedUser);
-              } catch (err) {
-                setHostActionError(
-                  err.response?.data?.message ||
-                    "Failed to accept the Code of Conduct."
-                );
-              } finally {
-                setHostActionLoading(false);
-              }
-            }}
-            className="px-5 py-3 rounded-2xl bg-ocean text-white font-semibold hover:bg-ocean/80 transition disabled:opacity-60"
-            disabled={hostActionLoading}
+        <>
+          <LifecycleNotice
+            title="Accept the Code of Conduct"
+            description="To continue onboarding, please review and accept the agency's Code of Conduct. This is required before the team reviews your profile."
           >
-            {hostActionLoading ? "Saving..." : "Accept Code of Conduct"}
-          </button>
-        </LifecycleNotice>
+            {hostActionError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm px-4 py-3">
+                {hostActionError}
+              </div>
+            )}
+            <button
+              onClick={() => {
+                setShowCodeOfConductModal(true);
+              }}
+              className="px-5 py-3 rounded-2xl bg-ocean text-white font-semibold hover:bg-ocean/80 transition"
+            >
+              Review Code of Conduct
+            </button>
+          </LifecycleNotice>
+          <CodeOfConductModal
+            isOpen={showCodeOfConductModal}
+            onClose={() => setShowCodeOfConductModal(false)}
+            onAccept={handleAcceptCodeOfConduct}
+            loading={hostActionLoading}
+          />
+        </>
       );
     }
 
