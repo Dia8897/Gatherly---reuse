@@ -34,12 +34,17 @@ const loadGoogleScript = () => {
 function GoogleAuthButton({ mode, disabled, onCredential, onUnavailable }) {
   const containerRef = useRef(null);
   const callbackRef = useRef(onCredential);
+  const unavailableRef = useRef(onUnavailable);
   const [scriptReady, setScriptReady] = useState(false);
-  const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+  const clientId = (process.env.REACT_APP_GOOGLE_CLIENT_ID || "").trim();
 
   useEffect(() => {
     callbackRef.current = onCredential;
   }, [onCredential]);
+
+  useEffect(() => {
+    unavailableRef.current = onUnavailable;
+  }, [onUnavailable]);
 
   useEffect(() => {
     if (!clientId || disabled) return undefined;
@@ -56,14 +61,14 @@ function GoogleAuthButton({ mode, disabled, onCredential, onUnavailable }) {
       })
       .catch(() => {
         if (!cancelled) {
-          onUnavailable?.("Google login could not load. Please check your connection and try again.");
+          unavailableRef.current?.("Google login could not load. Please check your connection and try again.");
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [clientId, disabled, onUnavailable]);
+  }, [clientId, disabled]);
 
   useEffect(() => {
     if (!scriptReady || !containerRef.current || disabled) return;
@@ -84,7 +89,11 @@ function GoogleAuthButton({ mode, disabled, onCredential, onUnavailable }) {
     return (
       <button
         type="button"
-        onClick={() => onUnavailable?.("Google login is not configured yet. Add a Google client ID first.")}
+        onClick={() =>
+          onUnavailable?.(
+            "Google login is not configured yet. Add REACT_APP_GOOGLE_CLIENT_ID to frontend/.env.local and restart the frontend server."
+          )
+        }
         className="w-full py-3 rounded-xl border border-gray-200 bg-cream text-gray-700 font-semibold hover:bg-mist transition"
       >
         {mode === "signup" ? "Sign up with Google" : "Sign in with Google"}
