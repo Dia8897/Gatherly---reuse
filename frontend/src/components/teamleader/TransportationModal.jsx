@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Calendar, Clock, MapPin, Users, DollarSign } from "lucide-react";
+import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
 import api from "../../services/api";
 
 export default function TransportationModal({ eventAppId, hostName, onClose, onSaved }) {
@@ -14,6 +15,8 @@ export default function TransportationModal({ eventAppId, hostName, onClose, onS
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [mapCenter, setMapCenter] = useState({ lat: 33.8938, lng: 35.5018 }); // Default to Beirut area
+  const [selectedLocation, setSelectedLocation] = useState(null);
 
   useEffect(() => {
     if (!eventAppId) return;
@@ -46,6 +49,25 @@ export default function TransportationModal({ eventAppId, hostName, onClose, onS
     const value = e.target.value;
     setForm(prev => ({ ...prev, [field]: value }));
     setErrors(prev => ({ ...prev, [field]: undefined }));
+  };
+
+  const handleMapClick = async (event) => {
+    const lat = event.latLng.lat();
+    const lng = event.latLng.lng();
+    setSelectedLocation({ lat, lng });
+    setMapCenter({ lat, lng });
+
+    // Reverse geocode to get address
+    try {
+      const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`);
+      const data = await response.json();
+      if (data.results && data.results[0]) {
+        const address = data.results[0].formatted_address;
+        setForm(prev => ({ ...prev, pickupLocation: address }));
+      }
+    } catch (error) {
+      console.error("Geocoding failed", error);
+    }
   };
 
   const validate = () => {
@@ -179,6 +201,22 @@ export default function TransportationModal({ eventAppId, hostName, onClose, onS
             {errors.pickupLocation && (
               <p className="text-xs text-red-500 mt-1">{errors.pickupLocation}</p>
             )}
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700">Select Location on Map</label>
+            <div className="mt-2 h-64 w-full rounded-lg overflow-hidden border border-gray-300">
+              <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}>
+                <GoogleMap
+                  mapContainerStyle={{ height: "100%", width: "100%" }}
+                  center={mapCenter}
+                  zoom={15}
+                  onClick={handleMapClick}
+                >
+                  {selectedLocation && <Marker position={selectedLocation} />}
+                </GoogleMap>
+              </LoadScript>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

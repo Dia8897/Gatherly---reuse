@@ -132,7 +132,7 @@ export default function Navbar() {
         let cancelled = false;
 
         const loadTeamLeaderEvent = async () => {
-            if (!session.user || session.userType !== "host") {
+            if (!session.user || session.userType !== "user" || session.user.eligibility !== "approved") {
                 setTeamLeaderEvent(null);
                 return;
             }
