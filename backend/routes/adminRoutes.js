@@ -2,6 +2,8 @@ import { Router } from "express";
 import db from "../config/db.js";
 import bcrypt from "bcryptjs";
 import { verifyToken, isAdmin } from "../middleware/auth.js";
+import { summarizeEmailResult } from "../utils/email.js";
+import { sendEventApprovalEmail, sendHostApprovalEmail } from "../utils/notificationEmails.js";
 import { buildTransportationSummary } from "../utils/transportation.js";
 // import { verify } from "jsonwebtoken";
 
@@ -335,6 +337,25 @@ const fetchHostById = async (userId) => {
   return rows[0];
 };
 
+const fetchEventWithClientById = async (eventId) => {
+  const [rows] = await db.query(
+    `SELECT e.eventId,
+            e.title,
+            e.type,
+            e.location,
+            e.startsAt,
+            e.endsAt,
+            c.fName AS clientFirstName,
+            c.lName AS clientLastName,
+            c.email AS clientEmail
+       FROM EVENTS e
+  LEFT JOIN CLIENTS c ON c.clientId = e.clientId
+      WHERE e.eventId = ?`,
+    [eventId]
+  );
+  return rows[0];
+};
+
 router.patch("/hosts/:userId/approve", verifyToken, isAdmin, async (req, res) => {
   const userId = Number(req.params.userId);
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -361,7 +382,12 @@ router.patch("/hosts/:userId/approve", verifyToken, isAdmin, async (req, res) =>
     );
 
     const updated = await fetchHostById(userId);
-    res.json({ message: "Host approved.", user: updated });
+    const emailResult = await sendHostApprovalEmail(updated);
+    res.json({
+      message: "Host approved.",
+      user: updated,
+      emailNotification: summarizeEmailResult(emailResult),
+    });
   } catch (err) {
     console.error("Failed to approve host", err);
     res.status(500).json({ message: "Failed to approve host" });
@@ -621,7 +647,12 @@ router.put("/event-requests/:id/approve", verifyToken, isAdmin, async (req, res)
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: "Event request not found or already processed" });
     }
-    res.json({ message: "Event approved" });
+    const event = await fetchEventWithClientById(id);
+    const emailResult = await sendEventApprovalEmail(event);
+    res.json({
+      message: "Event approved",
+      emailNotification: summarizeEmailResult(emailResult),
+    });
   } catch (err) {
     console.error("Failed to approve event", err);
     res.status(500).json({ message: "Failed to approve event" });

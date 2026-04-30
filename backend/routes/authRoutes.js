@@ -89,7 +89,9 @@ const verifyGoogleCredential = async (credential) => {
 
   const clientIds = getGoogleClientIds();
   if (!clientIds.length) {
-    const error = new Error("Google login is not configured.");
+    const error = new Error(
+      "Google login is not configured. Set GOOGLE_CLIENT_ID in backend/.env and restart the backend server."
+    );
     error.status = 500;
     throw error;
   }
@@ -124,7 +126,10 @@ const verifyGoogleCredential = async (credential) => {
     };
   } catch (err) {
     if (err.status) throw err;
-    const error = new Error("Failed Google login. Please try again.");
+    console.warn("Google ID token verification failed:", err.message);
+    const error = new Error(
+      "Failed Google login. Please verify that the frontend and backend Google client IDs match."
+    );
     error.status = 401;
     throw error;
   }
