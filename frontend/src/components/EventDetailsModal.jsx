@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Bus, AlertTriangle } from "lucide-react";
 import api from "../services/api";
 import useBodyScrollLock from "../hooks/useBodyScrollLock";
+import LocationMap from "./LocationMap";
 
 const DetailRow = ({ label, value }) => {
   if (!value) return null;
@@ -34,6 +35,7 @@ export default function EventDetailsModal({
   const [transportInfo, setTransportInfo] = useState(null);
   const [transportLoading, setTransportLoading] = useState(false);
   const [transportError, setTransportError] = useState("");
+  const [resolvedLocation, setResolvedLocation] = useState(null);
   useBodyScrollLock(Boolean(event));
 
   useEffect(() => {
@@ -71,16 +73,72 @@ export default function EventDetailsModal({
     };
   }, [event?.eventId, event?.transportationAvailable, event?.transportation]);
 
+  useEffect(() => {
+    if (!event) {
+      setResolvedLocation(null);
+      return undefined;
+    }
+
+    const directLat = event.locationLat ?? event.location_lat ?? null;
+    const directLng = event.locationLng ?? event.location_lng ?? null;
+    if (directLat && directLng) {
+      setResolvedLocation({
+        lat: directLat,
+        lng: directLng,
+        name: event.locationPlaceName || event.location || "",
+      });
+      return undefined;
+    }
+
+    if (!event.location) {
+      setResolvedLocation(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadLocationFromAddress = async () => {
+      try {
+        const query = /\blebanon\b/i.test(event.location)
+          ? event.location
+          : `${event.location}, Lebanon`;
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=lb&q=${encodeURIComponent(query)}`
+        );
+        const data = await response.json();
+        if (!cancelled && data?.[0]) {
+          setResolvedLocation({
+            lat: data[0].lat,
+            lng: data[0].lon,
+            name: data[0].display_name || event.location,
+          });
+        }
+      } catch {
+        if (!cancelled) setResolvedLocation(null);
+      }
+    };
+
+    setResolvedLocation(null);
+    loadLocationFromAddress();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [event]);
+
   if (!event) return null;
 
   const filled = event.acceptedHostsCount ?? 0;
   const requested = event.nbOfHosts ?? 0;
+  const displayLocation =
+    event.locationPlaceName || event.location_place_name || event.location || "TBA";
+  const fullLocation =
+    event.location && event.location !== displayLocation ? event.location : "";
   const coverage =
     requested > 0 ? Math.round((filled / requested) * 100) : null;
 
   const info = [
     { label: "Date", value: event.date || "TBA" },
-    { label: "Location", value: event.location || "TBA" },
+    { label: "Location", value: displayLocation },
     { label: "Dress code", value: event.outfit?.label || event.dressCode || "Not specified" },
     { label: "Hosts requested", value: `${filled} / ${requested || "?"}` },
   ];
@@ -95,7 +153,7 @@ export default function EventDetailsModal({
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto">
         {event.imageUrl && (
           <div className="h-60 w-full overflow-hidden rounded-t-3xl">
             <img
@@ -168,6 +226,37 @@ export default function EventDetailsModal({
               <DetailRow key={label} label={label} value={value} />
             ))}
           </div>
+
+          {resolvedLocation && (
+            <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Map Location</p>
+                {fullLocation && (
+                  <p className="text-sm font-semibold text-gray-900">{displayLocation}</p>
+                )}
+                <p className="text-xs text-gray-500">
+                  {fullLocation || resolvedLocation.name || displayLocation || "Selected event location"}
+                </p>
+              </div>
+              <LocationMap
+                lat={resolvedLocation.lat}
+                lng={resolvedLocation.lng}
+                className="h-96"
+                zoom={16}
+                interactive
+                showControls
+                showOpenLink
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
+                <span className="rounded-xl bg-cream px-3 py-2">
+                  Latitude: {resolvedLocation.lat}
+                </span>
+                <span className="rounded-xl bg-cream px-3 py-2">
+                  Longitude: {resolvedLocation.lng}
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-2xl border border-gray-100 p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">

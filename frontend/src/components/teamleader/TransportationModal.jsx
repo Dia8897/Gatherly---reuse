@@ -1,7 +1,34 @@
 import React, { useState, useEffect } from "react";
 import { Calendar, Clock, MapPin, Users, DollarSign } from "lucide-react";
-import { GoogleMap, LoadScript, Marker } from "@react-google-maps/api";
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import L from "leaflet";
 import api from "../../services/api";
+import "leaflet/dist/leaflet.css";
+
+const defaultMapCenter = [33.8938, 35.5018];
+const selectedLocationIcon = L.divIcon({
+  className: "",
+  html: '<div style="width:18px;height:18px;border-radius:9999px;background:#0f6b7a;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.35);"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+function MapClickHandler({ onSelect }) {
+  useMapEvents({
+    click(event) {
+      onSelect(event.latlng);
+    },
+  });
+  return null;
+}
+
+function MapCenterUpdater({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, map.getZoom());
+  }, [center, map]);
+  return null;
+}
 
 export default function TransportationModal({ eventAppId, hostName, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -15,7 +42,7 @@ export default function TransportationModal({ eventAppId, hostName, onClose, onS
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [feedbackMessage, setFeedbackMessage] = useState("");
-  const [mapCenter, setMapCenter] = useState({ lat: 33.8938, lng: 35.5018 }); // Default to Beirut area
+  const [mapCenter, setMapCenter] = useState(defaultMapCenter);
   const [selectedLocation, setSelectedLocation] = useState(null);
 
   useEffect(() => {
@@ -51,19 +78,18 @@ export default function TransportationModal({ eventAppId, hostName, onClose, onS
     setErrors(prev => ({ ...prev, [field]: undefined }));
   };
 
-  const handleMapClick = async (event) => {
-    const lat = event.latLng.lat();
-    const lng = event.latLng.lng();
-    setSelectedLocation({ lat, lng });
-    setMapCenter({ lat, lng });
+  const handleMapClick = async ({ lat, lng }) => {
+    const nextLocation = [lat, lng];
+    setSelectedLocation(nextLocation);
+    setMapCenter(nextLocation);
+    setForm(prev => ({ ...prev, pickupLocation: `${lat.toFixed(6)}, ${lng.toFixed(6)}` }));
 
     // Reverse geocode to get address
     try {
-      const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}`);
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`);
       const data = await response.json();
-      if (data.results && data.results[0]) {
-        const address = data.results[0].formatted_address;
-        setForm(prev => ({ ...prev, pickupLocation: address }));
+      if (data.display_name) {
+        setForm(prev => ({ ...prev, pickupLocation: data.display_name }));
       }
     } catch (error) {
       console.error("Geocoding failed", error);
@@ -205,17 +231,23 @@ export default function TransportationModal({ eventAppId, hostName, onClose, onS
 
           <div>
             <label className="text-sm font-medium text-gray-700">Select Location on Map</label>
-            <div className="mt-2 h-64 w-full rounded-lg overflow-hidden border border-gray-300">
-              <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}>
-                <GoogleMap
-                  mapContainerStyle={{ height: "100%", width: "100%" }}
-                  center={mapCenter}
-                  zoom={15}
-                  onClick={handleMapClick}
-                >
-                  {selectedLocation && <Marker position={selectedLocation} />}
-                </GoogleMap>
-              </LoadScript>
+            <div className="relative z-0 mt-2 h-64 w-full rounded-lg overflow-hidden border border-gray-300">
+              <MapContainer
+                center={mapCenter}
+                zoom={15}
+                scrollWheelZoom={false}
+                className="relative z-0 h-full w-full"
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <MapClickHandler onSelect={handleMapClick} />
+                <MapCenterUpdater center={mapCenter} />
+                {selectedLocation && (
+                  <Marker position={selectedLocation} icon={selectedLocationIcon} />
+                )}
+              </MapContainer>
             </div>
           </div>
 

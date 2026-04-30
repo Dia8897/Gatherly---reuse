@@ -283,7 +283,17 @@ router.get("/:id", async (req, res) => {
 
 // Client creates an event request (pending)
 router.post("/", verifyToken, isClient, async (req, res) => {
-  const { type, description, location, startsAt, endsAt, nbOfGuests } = req.body;
+  const {
+    type,
+    description,
+    location,
+    locationLat,
+    locationLng,
+    locationPlaceName,
+    startsAt,
+    endsAt,
+    nbOfGuests,
+  } = req.body;
 
   // Quick validation
   if (!type || !description || !location || !startsAt || !endsAt || !nbOfGuests) {
@@ -315,15 +325,18 @@ router.post("/", verifyToken, isClient, async (req, res) => {
   try {
     const [result] = await db.query(
       `INSERT INTO EVENTS (
-         title, type, description, location, startsAt, endsAt,
+         title, type, description, location, locationLat, locationLng, locationPlaceName, startsAt, endsAt,
          nbOfHosts, nbOfGuests, floorPlan, attendeesList, rate,
          teamLeaderId, clothesId, clientId, adminId, status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       , [
         title,
         type,
         description,
         location,
+        locationLat ?? null,
+        locationLng ?? null,
+        locationPlaceName?.trim() || null,
         startsAt,
         endsAt,
         Math.max(1, Math.ceil(Number(nbOfGuests) / 5)),
@@ -358,6 +371,9 @@ router.put("/:id", verifyToken, isAdmin, async (req, res) => {
     type,
     description,
     location,
+    locationLat,
+    locationLng,
+    locationPlaceName,
     startsAt,
     endsAt,
     nbOfHosts,
@@ -414,6 +430,9 @@ router.put("/:id", verifyToken, isAdmin, async (req, res) => {
   add("type", type?.trim());
   add("description", description);
   add("location", location?.trim());
+  add("locationLat", locationLat ?? null);
+  add("locationLng", locationLng ?? null);
+  add("locationPlaceName", locationPlaceName?.trim() || null);
   add("startsAt", startsAt);
   add("endsAt", endsAt);
   add("nbOfHosts", nbOfHosts, Number);

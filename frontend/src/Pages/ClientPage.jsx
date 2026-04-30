@@ -40,6 +40,11 @@ export default function ClientPage() {
   const [endDateTime, setEndDateTime] = useState(null);
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
+  const [locationMeta, setLocationMeta] = useState({
+    locationLat: null,
+    locationLng: null,
+    locationPlaceName: "",
+  });
   const [guests, setGuests] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
@@ -166,6 +171,9 @@ export default function ClientPage() {
       type: eventType,
       description: description.trim(),
       location: location.trim(),
+      locationLat: locationMeta.locationLat,
+      locationLng: locationMeta.locationLng,
+      locationPlaceName: locationMeta.locationPlaceName,
       startsAt: toMySqlDateTime(startDateTime),
       endsAt: toMySqlDateTime(endDateTime),
       nbOfGuests: Number(guests),
@@ -182,6 +190,9 @@ export default function ClientPage() {
         guests: Number(guests),
         status: "pending",
         location: payload.location,
+        locationLat: payload.locationLat,
+        locationLng: payload.locationLng,
+        locationPlaceName: payload.locationPlaceName,
       };
 
       setEvents((prev) => [...prev, newEvent]);
@@ -190,6 +201,11 @@ export default function ClientPage() {
       setEndDateTime(null);
       setDescription("");
       setLocation("");
+      setLocationMeta({
+        locationLat: null,
+        locationLng: null,
+        locationPlaceName: "",
+      });
       setGuests("");
       setSelectedClothesId(null);
     } catch (err) {
@@ -374,6 +390,7 @@ export default function ClientPage() {
                 onEndChange={setEndDateTime}
                 onGuestsChange={setGuests}
                 onLocationChange={setLocation}
+                onLocationMetaChange={setLocationMeta}
                 onDescriptionChange={setDescription}
                 onClothesChange={setSelectedClothesId}
                 onSubmit={handleCreateRequest}

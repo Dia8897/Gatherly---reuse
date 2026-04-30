@@ -58,6 +58,14 @@ const normalizeEvent = (event = {}) => {
     imageUrl: event.imageUrl || null,
     transportationAvailable: Boolean(event.transportationAvailable),
     transportation: event.transportationSummary || event.transportation || null,
+    locationLat: event.locationLat ?? event.location_lat ?? event.lat ?? null,
+    locationLng: event.locationLng ?? event.location_lng ?? event.lng ?? null,
+    locationPlaceName: event.locationPlaceName ?? event.location_place_name ?? null,
+    displayLocation:
+      event.locationPlaceName ??
+      event.location_place_name ??
+      event.location ??
+      "Location TBA",
   };
 };
 
@@ -619,7 +627,7 @@ export default function EventsPage() {
                     {spotlightEvent.title}
                   </h2>
                   <p className="text-sm text-gray-500">
-                    {spotlightEvent.date} • {spotlightEvent.location}
+                    {spotlightEvent.date} • {spotlightEvent.displayLocation || spotlightEvent.location}
                   </p>
                   <p className="text-sm text-gray-600 line-clamp-3">
                     {spotlightEvent.shortDescription}
@@ -715,7 +723,7 @@ export default function EventsPage() {
                           {event.title}
                         </h3>
                         <p className="text-sm text-gray-500">
-                          {event.date} • {event.location}
+                          {event.date} • {event.displayLocation || event.location}
                         </p>
                       </div>
                       <p className="text-sm text-gray-600 line-clamp-3">

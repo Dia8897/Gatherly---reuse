@@ -4,6 +4,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import AcceptedHosts from "../components/teamleader/AcceptedHosts";
 import { Calendar, MapPin, Users, Clock, Building2, Star, AlertTriangle, Bus } from "lucide-react";
+import LocationMap from "../components/LocationMap";
 import api, { reviewAPI } from "../services/api";
 
 const formatDate = (value) => {
@@ -385,6 +386,15 @@ export default function TeamLeaderEventPage() {
                     {openSlots} slot{openSlots > 1 ? "s" : ""} still need assignment
                   </div>
                 )}
+                <LocationMap
+                  lat={eventData.locationLat}
+                  lng={eventData.locationLng}
+                  className="h-80"
+                  zoom={16}
+                  interactive
+                  showControls
+                  showOpenLink
+                />
               </div>
 
               <div className="lg:w-80 bg-cream rounded-2xl p-6 border border-gray-100">

@@ -1,7 +1,22 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import api from "../services/api";
 import DatePicker from "react-datepicker";
+import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import L from "leaflet";
+import { MapPin } from "lucide-react";
 import "react-datepicker/dist/react-datepicker.css";
+import "leaflet/dist/leaflet.css";
+
+const LEBANON_CENTER = [33.8547, 35.8623];
+const BEIRUT_CENTER = [33.8938, 35.5018];
+const LEBANON_ZOOM = 8;
+const VENUE_ZOOM = 15;
+const LEBANON_BOUNDS = {
+  minLon: 35.103,
+  minLat: 33.055,
+  maxLon: 36.625,
+  maxLat: 34.692,
+};
 
 const formatTime = (date) => {
   if (!date) return "";
@@ -35,16 +50,141 @@ const buildAssetUrl = (path) => {
 };
 
 const locationOptions = [
-  "Grand Hyatt Beirut",
   "Le Royal Hotels & Resorts",
-  "Four Seasons Hotel Beirut",
+  "Four Seasons Halat / Okaibe",
   "The Phoenicia Hotel",
   "Le Gray Beirut",
-  "InterContinental Beirut",
   "Radisson Blu Martinez",
   "Gefinor Rotana",
   "Monroe Hotel"
 ];
+
+const locationFallbacks = {
+  "le royal hotels & resorts": {
+    label: "Le Royal Hotels & Resorts",
+    displayName: "Le Royal Hotel, Dbayeh, Lebanon",
+    lat: 33.94799,
+    lng: 35.59515,
+  },
+  "four seasons hotel beirut": {
+    label: "Four Seasons Halat / Okaibe",
+    displayName: "Four Seasons Halat, Halat Front Sea Road, Byblos Road, Lebanon",
+    lat: 34.07325,
+    lng: 35.644211,
+  },
+  "four seasons halat / okaibe": {
+    label: "Four Seasons Halat / Okaibe",
+    displayName: "Four Seasons Halat, Halat Front Sea Road, Byblos Road, Lebanon",
+    lat: 34.07325,
+    lng: 35.644211,
+  },
+  "four seasons halat": {
+    label: "Four Seasons Halat / Okaibe",
+    displayName: "Four Seasons Halat, Halat Front Sea Road, Byblos Road, Lebanon",
+    lat: 34.07325,
+    lng: 35.644211,
+  },
+  "four seasons okaibe": {
+    label: "Four Seasons Halat / Okaibe",
+    displayName: "Four Seasons Halat, Halat Front Sea Road, Byblos Road, Lebanon",
+    lat: 34.07325,
+    lng: 35.644211,
+  },
+  "the phoenicia hotel": {
+    label: "The Phoenicia Hotel",
+    displayName: "Phoenicia Hotel Beirut, Minet El Hosn, Beirut, Lebanon",
+    lat: 33.900466,
+    lng: 35.495109,
+  },
+  "le gray beirut": {
+    label: "Le Gray Beirut",
+    displayName: "Le Gray Beirut, Downtown Beirut, Lebanon",
+    lat: 33.897296,
+    lng: 35.506589,
+  },
+  "radisson blu martinez": {
+    label: "Radisson Blu Martinez",
+    displayName: "Radisson Blu Martinez Hotel, Beirut, Lebanon",
+    lat: 33.9003,
+    lng: 35.49277,
+  },
+  "gefinor rotana": {
+    label: "Gefinor Rotana",
+    displayName: "Gefinor Rotana, Hamra, Beirut, Lebanon",
+    lat: 33.89817552500911,
+    lng: 35.48802316188812,
+  },
+  "monroe hotel": {
+    label: "Monroe Hotel",
+    displayName: "Monroe Hotel, Beirut, Lebanon",
+    lat: 33.9006,
+    lng: 35.49564,
+  },
+  "biel beirut": {
+    label: "BIEL Beirut",
+    displayName: "BIEL Beirut, Beirut Waterfront, Lebanon",
+    lat: 33.9081,
+    lng: 35.5105,
+  },
+  "beirut waterfront": {
+    label: "Beirut Waterfront",
+    displayName: "Beirut Waterfront, Beirut, Lebanon",
+    lat: 33.9068,
+    lng: 35.5098,
+  },
+};
+
+const normalizeSearchKey = (value = "") =>
+  value.toLowerCase().replace(/\s+/g, " ").trim();
+
+const isInsideLebanon = (result) => {
+  const lat = Number(result?.lat);
+  const lon = Number(result?.lon);
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= LEBANON_BOUNDS.minLat &&
+    lat <= LEBANON_BOUNDS.maxLat &&
+    lon >= LEBANON_BOUNDS.minLon &&
+    lon <= LEBANON_BOUNDS.maxLon
+  );
+};
+
+const selectedLocationIcon = L.divIcon({
+  className: "",
+  html: '<div style="width:18px;height:18px;border-radius:9999px;background:#0f6b7a;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,.35);"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+function MapClickHandler({ onSelect }) {
+  useMapEvents({
+    click(event) {
+      onSelect(event.latlng);
+    },
+  });
+  return null;
+}
+
+function MapCenterUpdater({ center, zoom }) {
+  const map = useMap();
+  React.useEffect(() => {
+    map.setView(center, zoom);
+  }, [center, map, zoom]);
+  return null;
+}
+
+function MapResizeWatcher({ active }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!active) return undefined;
+    const timers = [0, 150, 350].map((delay) =>
+      window.setTimeout(() => map.invalidateSize(), delay)
+    );
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [active, map]);
+  return null;
+}
 
 export default function ClientEventRequest({
   occasions,
@@ -61,12 +201,274 @@ export default function ClientEventRequest({
   onEndChange,
   onGuestsChange,
   onLocationChange,
+  onLocationMetaChange,
   onDescriptionChange,
   onClothesChange,
   onSubmit,
   submitting = false,
   errorMessage = "",
 }) {
+  const [isMapOpen, setIsMapOpen] = useState(false);
+  const [mapCenter, setMapCenter] = useState(LEBANON_CENTER);
+  const [mapZoom, setMapZoom] = useState(LEBANON_ZOOM);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [mapError, setMapError] = useState("");
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [mapSearchQuery, setMapSearchQuery] = useState("");
+  const [mapLayer, setMapLayer] = useState("satellite");
+
+  const applyResolvedLocation = ({
+    lat,
+    lng,
+    displayName,
+    placeName,
+    shouldReplaceLocation = true,
+  }) => {
+    const nextLocation = [Number(lat), Number(lng)];
+    setMapCenter(nextLocation);
+    setMapZoom(VENUE_ZOOM);
+    setSelectedLocation(nextLocation);
+    if (shouldReplaceLocation) {
+      onLocationChange(placeName || displayName || location);
+    }
+    onLocationMetaChange?.({
+      locationLat: Number(lat),
+      locationLng: Number(lng),
+      locationPlaceName: placeName || displayName?.split(",")[0] || "",
+    });
+    setMapError("");
+  };
+
+  const findFallbackLocation = (query) => {
+    const normalized = normalizeSearchKey(query);
+    if (locationFallbacks[normalized]) return locationFallbacks[normalized];
+    return Object.entries(locationFallbacks).find(
+      ([key, fallback]) =>
+        normalized.includes(key) ||
+        key.includes(normalized) ||
+        normalized.includes(normalizeSearchKey(fallback.label))
+    )?.[1];
+  };
+
+  const selectKnownLocation = (knownLocation) => {
+    if (!knownLocation) return;
+    const fallbackResult = {
+      place_id: `fallback-${normalizeSearchKey(knownLocation.label)}`,
+      lat: knownLocation.lat,
+      lon: knownLocation.lng,
+      name: knownLocation.label,
+      display_name: knownLocation.displayName,
+      isFallback: true,
+    };
+    setIsMapOpen(true);
+    setMapSearchQuery(knownLocation.label);
+    setSearchResults([fallbackResult]);
+    handleSearchResultSelect(fallbackResult);
+  };
+
+  const handleMapSelect = async ({ lat, lng }) => {
+    const nextLocation = [lat, lng];
+    const coordinateLabel = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+
+    setSelectedLocation(nextLocation);
+    setMapCenter(nextLocation);
+    setMapZoom(VENUE_ZOOM);
+    onLocationChange(coordinateLabel);
+    onLocationMetaChange?.({
+      locationLat: lat,
+      locationLng: lng,
+      locationPlaceName: "",
+    });
+    setMapError("");
+    setSearchResults([]);
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`
+      );
+      const data = await response.json();
+      if (data.display_name) {
+        onLocationChange(data.display_name);
+        onLocationMetaChange?.({
+          locationLat: lat,
+          locationLng: lng,
+          locationPlaceName: data.name || data.display_name.split(",")[0] || "",
+        });
+      }
+    } catch {
+      setMapError("Address lookup failed. Coordinates were saved instead.");
+    }
+  };
+
+  const runNominatimSearch = async (query, searchParams = {}) => {
+    const rawParams = {
+      format: "jsonv2",
+      addressdetails: "1",
+      limit: "8",
+      countrycodes: "lb",
+      q: query,
+      ...searchParams,
+    };
+    const params = new URLSearchParams();
+    Object.entries(rawParams).forEach(([key, value]) => {
+      if (value !== "" && value !== null && value !== undefined) {
+        params.set(key, value);
+      }
+    });
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?${params.toString()}`
+    );
+    if (!response.ok) {
+      throw new Error("Map search request failed");
+    }
+    return response.json();
+  };
+
+  const pickBestLebanonResult = (results = []) => {
+    const lebanonResults = results.filter(
+      (result) =>
+        isInsideLebanon(result) ||
+        result?.address?.country_code === "lb" ||
+        /lebanon/i.test(result?.display_name || "")
+    );
+    return lebanonResults[0] || null;
+  };
+
+  const handleLocationSearch = async (queryOverride = mapSearchQuery || location) => {
+    const query = queryOverride.trim();
+    if (!query) {
+      setMapError("Type a venue, hotel, or address in the map search box.");
+      return;
+    }
+
+    const knownLocation = findFallbackLocation(query);
+    if (knownLocation) {
+      selectKnownLocation(knownLocation);
+      return;
+    }
+
+    setIsSearchingLocation(true);
+    setMapError("");
+    setSearchResults([]);
+
+    try {
+      const withLebanon = /\blebanon\b/i.test(query) ? query : `${query}, Lebanon`;
+      const attempts = [
+        () => runNominatimSearch(query),
+        () => runNominatimSearch(withLebanon),
+        () =>
+          runNominatimSearch(withLebanon, {
+            viewbox: `${LEBANON_BOUNDS.minLon},${LEBANON_BOUNDS.maxLat},${LEBANON_BOUNDS.maxLon},${LEBANON_BOUNDS.minLat}`,
+          }),
+        () => runNominatimSearch(query, { countrycodes: "" }),
+      ];
+
+      let results = [];
+      for (const attempt of attempts) {
+        const data = await attempt();
+        const usable = (data || []).filter(
+          (result) => Number.isFinite(Number(result.lat)) && Number.isFinite(Number(result.lon))
+        );
+        if (usable.length) {
+          results = usable;
+          break;
+        }
+      }
+
+      const bestResult = pickBestLebanonResult(results);
+      if (bestResult) {
+        const lebanonResults = results.filter(
+          (result) =>
+            isInsideLebanon(result) ||
+            result?.address?.country_code === "lb" ||
+            /lebanon/i.test(result?.display_name || "")
+        );
+        const sortedResults = [
+          bestResult,
+          ...lebanonResults.filter((result) => result.place_id !== bestResult.place_id),
+        ];
+        setSearchResults(sortedResults);
+        handleSearchResultSelect(bestResult);
+        return;
+      }
+
+      const fallback = findFallbackLocation(query);
+      if (fallback) {
+        const fallbackResult = {
+          place_id: `fallback-${normalizeSearchKey(fallback.label)}`,
+          lat: fallback.lat,
+          lon: fallback.lng,
+          name: fallback.label,
+          display_name: fallback.displayName,
+          isFallback: true,
+        };
+        setSearchResults([fallbackResult]);
+        handleSearchResultSelect(fallbackResult);
+        setMapError("");
+        return;
+      }
+
+      onLocationChange(query);
+      onLocationMetaChange?.({
+        locationLat: null,
+        locationLng: null,
+        locationPlaceName: "",
+      });
+      setMapError("No exact map result found. The typed location was kept, but no marker was saved.");
+    } catch {
+      const fallback = findFallbackLocation(query);
+      if (fallback) {
+        const fallbackResult = {
+          place_id: `fallback-${normalizeSearchKey(fallback.label)}`,
+          lat: fallback.lat,
+          lon: fallback.lng,
+          name: fallback.label,
+          display_name: fallback.displayName,
+          isFallback: true,
+        };
+        setSearchResults([fallbackResult]);
+        handleSearchResultSelect(fallbackResult);
+        return;
+      }
+      setMapError("Map search failed. You can still type the address manually.");
+    } finally {
+      setIsSearchingLocation(false);
+    }
+  };
+
+  const handleSearchResultSelect = (result) => {
+    const typedVenueName = (mapSearchQuery || location || "").trim();
+    applyResolvedLocation({
+      lat: result.lat,
+      lng: result.lon,
+      displayName: result.display_name || result.name || location,
+      placeName: typedVenueName || result.name || result.display_name?.split(",")[0] || "",
+    });
+  };
+
+  const handleSuggestedLocation = (loc) => {
+    const fallback = findFallbackLocation(loc);
+    if (fallback) {
+      selectKnownLocation(fallback);
+      return;
+    }
+    onLocationChange(loc);
+    setMapSearchQuery(loc);
+    setIsMapOpen(true);
+    window.setTimeout(() => handleLocationSearch(loc), 0);
+  };
+
+  const resetMapToLebanon = () => {
+    setMapCenter(LEBANON_CENTER);
+    setMapZoom(LEBANON_ZOOM);
+  };
+
+  const focusBeirut = () => {
+    setMapCenter(BEIRUT_CENTER);
+    setMapZoom(13);
+  };
+
   return (
     <div className="bg-white rounded-3xl shadow-lg border border-gray-100 overflow-hidden">
       {/* Header */}
@@ -208,21 +610,214 @@ export default function ClientEventRequest({
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Event Location
                 </label>
-                <select
+                <input
+                  type="text"
                   value={location}
-                  onChange={(e) => onLocationChange(e.target.value)}
+                  onChange={(e) => {
+                    const nextValue = e.target.value;
+                    const knownLocation = findFallbackLocation(nextValue);
+                    if (knownLocation && normalizeSearchKey(knownLocation.label) === normalizeSearchKey(nextValue)) {
+                      selectKnownLocation(knownLocation);
+                      return;
+                    }
+
+                    onLocationChange(nextValue);
+                    setMapSearchQuery(nextValue);
+                    onLocationMetaChange?.({
+                      locationLat: null,
+                      locationLng: null,
+                      locationPlaceName: "",
+                    });
+                  }}
+                  list="client-location-suggestions"
                   className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean bg-white"
+                  placeholder="Type an address or choose one from the map"
                   disabled={submitting}
                   required
-                >
-                 <option value="" disabled hidden>
-                  Select a location
-                  </option>
-
+                />
+                <datalist id="client-location-suggestions">
                   {locationOptions.map((loc) => (
-                    <option key={loc} value={loc}>{loc}</option>
+                    <option key={loc} value={loc} />
                   ))}
-                </select>
+                </datalist>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {locationOptions.slice(0, 5).map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      onClick={() => handleSuggestedLocation(loc)}
+                      className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-ocean hover:text-ocean transition"
+                      disabled={submitting}
+                    >
+                      {loc}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMapSearchQuery((current) => current || location);
+                    setIsMapOpen((prev) => !prev);
+                  }}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl border border-ocean/30 bg-white px-4 py-2 text-sm font-semibold text-ocean hover:bg-sky transition"
+                  disabled={submitting}
+                >
+                  <MapPin size={16} />
+                  {isMapOpen ? "Hide Map" : "Choose on Map"}
+                </button>
+                {isMapOpen && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={mapSearchQuery}
+                        onChange={(e) => setMapSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleLocationSearch();
+                          }
+                        }}
+                        className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean"
+                        placeholder="Search venue or hotel in Lebanon"
+                        disabled={submitting}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleLocationSearch()}
+                        className="rounded-xl bg-ocean px-4 py-2 text-sm font-semibold text-white hover:bg-ocean/90 transition disabled:opacity-60"
+                        disabled={submitting || isSearchingLocation}
+                      >
+                        {isSearchingLocation ? "Searching..." : "Search"}
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setMapLayer("satellite")}
+                        className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                          mapLayer === "satellite"
+                            ? "border-ocean bg-ocean text-white"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-ocean hover:text-ocean"
+                        }`}
+                        disabled={submitting}
+                      >
+                        Satellite
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMapLayer("street")}
+                        className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                          mapLayer === "street"
+                            ? "border-ocean bg-ocean text-white"
+                            : "border-gray-200 bg-white text-gray-700 hover:border-ocean hover:text-ocean"
+                        }`}
+                        disabled={submitting}
+                      >
+                        Map
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetMapToLebanon}
+                        className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:border-ocean hover:text-ocean transition"
+                        disabled={submitting}
+                      >
+                        Show Lebanon
+                      </button>
+                      <button
+                        type="button"
+                        onClick={focusBeirut}
+                        className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:border-ocean hover:text-ocean transition"
+                        disabled={submitting}
+                      >
+                        Beirut
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMapZoom((zoom) => Math.min(zoom + 1, 22))}
+                        className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-lg font-bold text-gray-700 hover:border-ocean hover:text-ocean transition"
+                        disabled={submitting}
+                        aria-label="Zoom in"
+                      >
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMapZoom((zoom) => Math.max(zoom - 1, 6))}
+                        className="h-9 w-9 rounded-xl border border-gray-200 bg-white text-lg font-bold text-gray-700 hover:border-ocean hover:text-ocean transition"
+                        disabled={submitting}
+                        aria-label="Zoom out"
+                      >
+                        -
+                      </button>
+                    </div>
+                    {searchResults.length > 0 && (
+                      <div className="max-h-44 overflow-y-auto rounded-2xl border border-gray-200 bg-white divide-y divide-gray-100">
+                        {searchResults.map((result) => (
+                          <button
+                            key={`${result.place_id}-${result.lat}-${result.lon}`}
+                            type="button"
+                            onClick={() => handleSearchResultSelect(result)}
+                            className="w-full px-4 py-3 text-left hover:bg-sky transition"
+                            disabled={submitting}
+                          >
+                            <p className="text-sm font-semibold text-gray-900">
+                              {result.name || result.display_name.split(",")[0]}
+                            </p>
+                            <p className="text-xs text-gray-500 line-clamp-2">
+                              {result.display_name}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="relative z-0 h-80 w-full overflow-hidden rounded-2xl border border-gray-200 bg-white">
+                      <MapContainer
+                        center={mapCenter}
+                        zoom={mapZoom}
+                        maxZoom={22}
+                        scrollWheelZoom
+                        className="relative z-0 h-full w-full"
+                      >
+                        {mapLayer === "satellite" ? (
+                          <>
+                            <TileLayer
+                              attribution='Tiles &copy; Esri'
+                              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                              maxZoom={22}
+                              maxNativeZoom={19}
+                            />
+                            <TileLayer
+                              attribution='Labels &copy; Esri'
+                              url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                              maxZoom={22}
+                              maxNativeZoom={19}
+                            />
+                          </>
+                        ) : (
+                          <TileLayer
+                            attribution='Tiles &copy; Esri'
+                            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
+                            maxZoom={22}
+                            maxNativeZoom={19}
+                          />
+                        )}
+                        <MapClickHandler onSelect={handleMapSelect} />
+                        <MapCenterUpdater center={mapCenter} zoom={mapZoom} />
+                        <MapResizeWatcher active={isMapOpen} />
+                        {selectedLocation && (
+                          <Marker
+                            position={selectedLocation}
+                            icon={selectedLocationIcon}
+                          />
+                        )}
+                      </MapContainer>
+                    </div>
+                    {mapError && (
+                      <p className="text-xs font-medium text-amber-700">{mapError}</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

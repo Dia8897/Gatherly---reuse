@@ -171,7 +171,7 @@ export default function Navbar() {
     const showTeamLeaderLink = Boolean(teamLeaderEvent && isLoggedIn);
 
     return (
-        <header className="w-full fixed top-0 left-0 z-50 bg-rose shadow-sm">
+        <header className="w-full fixed top-0 left-0 z-[2000] bg-rose shadow-sm">
             <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                 {/* Logo */}
                 <Link to={primaryLink} className="text-2xl font-bold text-white select-none">

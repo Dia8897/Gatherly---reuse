@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import api, { adminAPI, reviewAPI } from "../../services/api";
 import useBodyScrollLock from "../../hooks/useBodyScrollLock";
+import LocationMap from "../LocationMap";
 
 const CLIENT_FIELDS = ["clientFirstName", "clientLastName", "clientEmail", "clientPhone"];
 
@@ -91,6 +92,10 @@ const normalizeRequest = (request) => {
     startDateTime: formatDateTime(request.startsAt),
     endDateTime: formatDateTime(request.endsAt),
     location: request.location || "Location TBA",
+    locationLat: request.locationLat,
+    locationLng: request.locationLng,
+    locationPlaceName: request.locationPlaceName,
+    displayLocation: request.locationPlaceName || request.location || "Location TBA",
     nbOfHosts: request.nbOfHosts || 0,
     description: request.description || "No description provided.",
     status: toTitleCase(request.status || "pending"),
@@ -638,7 +643,7 @@ export default function EventRequests() {
                       </div>
                       <div className="flex items-center gap-2">
                         <MapPin size={16} className="text-ocean" />
-                        <span>{request.location}</span>
+                        <span>{request.displayLocation}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Clock size={16} className="text-ocean" />
@@ -773,13 +778,49 @@ export default function EventRequests() {
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Event Info Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2 rounded-2xl border border-gray-100 p-4 space-y-4">
                   <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <MapPin size={16} className="text-ocean" />
                     <span>Location</span>
                   </div>
-                  <p className="text-sm text-gray-600">{detailModal.location}</p>
+                  <div>
+                    <p className="text-base font-semibold text-gray-900">
+                      {detailModal.displayLocation}
+                    </p>
+                    {detailModal.location && detailModal.location !== detailModal.displayLocation && (
+                      <p className="text-sm text-gray-600">{detailModal.location}</p>
+                    )}
+                  </div>
+                  <LocationMap
+                    lat={detailModal.locationLat}
+                    lng={detailModal.locationLng}
+                    className="h-80"
+                    zoom={16}
+                    interactive
+                    showControls
+                    showOpenLink
+                  />
+                  {!detailModal.locationLat || !detailModal.locationLng ? (
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      This event has no saved map coordinates yet. The text location is still available above.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-600">
+                      <div className="rounded-xl bg-cream px-3 py-2">
+                        <span className="font-semibold text-gray-800">Latitude:</span> {detailModal.locationLat}
+                      </div>
+                      <div className="rounded-xl bg-cream px-3 py-2">
+                        <span className="font-semibold text-gray-800">Longitude:</span> {detailModal.locationLng}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                    <Clock size={16} className="text-ocean" />
+                    <span>Schedule</span>
+                  </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Users size={16} className="text-ocean" />
                     <span>{detailModal.nbOfHosts} hosts requested</span>
@@ -792,8 +833,6 @@ export default function EventRequests() {
                     <Clock size={16} className="text-ocean" />
                     <span>Ends: {detailModal.endDateTime || "TBA"}</span>
                   </div>
-                </div>
-                <div className="rounded-2xl border border-gray-100 p-4 space-y-3">
                   <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                     <User size={16} className="text-ocean" />
                     <span>Client</span>
