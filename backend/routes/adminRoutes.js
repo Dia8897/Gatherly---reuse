@@ -443,6 +443,12 @@ const fetchEventWithClientById = async (eventId) => {
   return rows[0];
 };
 
+const logEmailNotification = (label, result) => {
+  const status = summarizeEmailResult(result);
+  console.info(`${label}: ${status}`);
+  return status;
+};
+
 router.patch("/hosts/:userId/approve", verifyToken, isAdmin, async (req, res) => {
   const userId = Number(req.params.userId);
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -470,10 +476,14 @@ router.patch("/hosts/:userId/approve", verifyToken, isAdmin, async (req, res) =>
 
     const updated = await fetchHostById(userId);
     const emailResult = await sendHostApprovalEmail(updated);
+    const emailNotification = logEmailNotification(
+      `Host approval email notification for user ${userId}`,
+      emailResult
+    );
     res.json({
       message: "Host approved.",
       user: updated,
-      emailNotification: summarizeEmailResult(emailResult),
+      emailNotification,
     });
   } catch (err) {
     console.error("Failed to approve host", err);
@@ -736,9 +746,13 @@ router.put("/event-requests/:id/approve", verifyToken, isAdmin, async (req, res)
     }
     const event = await fetchEventWithClientById(id);
     const emailResult = await sendEventApprovalEmail(event);
+    const emailNotification = logEmailNotification(
+      `Event approval email notification for event ${id}`,
+      emailResult
+    );
     res.json({
       message: "Event approved",
-      emailNotification: summarizeEmailResult(emailResult),
+      emailNotification,
     });
   } catch (err) {
     console.error("Failed to approve event", err);

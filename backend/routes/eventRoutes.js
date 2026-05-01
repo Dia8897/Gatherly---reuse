@@ -29,6 +29,12 @@ const fetchEventWithClientById = async (eventId) => {
   return rows[0];
 };
 
+const logEmailNotification = (label, result) => {
+  const status = summarizeEmailResult(result);
+  console.info(`${label}: ${status}`);
+  return status;
+};
+
 // List all accepted events (public)
 router.get("/", async (_req, res) => {
   try {
@@ -498,7 +504,10 @@ router.put("/:id", verifyToken, isAdmin, async (req, res) => {
     if (status === "accepted" && previousEvent.status !== "accepted") {
       const updatedEvent = await fetchEventWithClientById(id);
       const emailResult = await sendEventApprovalEmail(updatedEvent || previousEvent);
-      emailNotification = summarizeEmailResult(emailResult);
+      emailNotification = logEmailNotification(
+        `Event approval email notification for event ${id}`,
+        emailResult
+      );
     }
 
     res.json({

@@ -105,7 +105,12 @@ const getGoogleAccessToken = async (config) => {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.access_token) {
-    throw new Error(data.error_description || data.error || `Google token request failed (${response.status})`);
+    const details = [data.error, data.error_description].filter(Boolean).join(": ");
+    throw new Error(
+      details
+        ? `Google token request failed (${response.status}): ${details}`
+        : `Google token request failed (${response.status})`
+    );
   }
 
   cachedAccessToken = data.access_token;
