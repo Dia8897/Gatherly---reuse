@@ -54,6 +54,7 @@ export default function ClientPage() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [profilePicUrl, setProfilePicUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [profilePicError, setProfilePicError] = useState("");
@@ -260,6 +261,7 @@ export default function ClientPage() {
       setPasswordSuccess("Password updated successfully.");
       setNewPassword("");
       setConfirmPassword("");
+      setShowPasswordForm(false);
     } catch (err) {
       const message = err?.response?.data?.message || err.message || "Failed to update password";
       setPasswordError(message);
@@ -401,14 +403,29 @@ export default function ClientPage() {
               <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-8 space-y-10">
 
 
-                <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-[0.3em] text-ocean font-semibold">
-                    Security
-                  </p>
-                  <h2 className="text-2xl font-bold text-gray-900">Change Password</h2>
-                  <p className="text-sm text-gray-500">
-                    Set a new password for your account. Leave blank if you do not want to change it.
-                  </p>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-2">
+                    <p className="text-xs uppercase tracking-[0.3em] text-ocean font-semibold">
+                      Security
+                    </p>
+                    <h2 className="text-2xl font-bold text-gray-900">Password</h2>
+                    <p className="text-sm text-gray-500">
+                      Keep this hidden unless you need to update it.
+                    </p>
+                  </div>
+                  {!showPasswordForm && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPasswordError("");
+                        setPasswordSuccess("");
+                        setShowPasswordForm(true);
+                      }}
+                      className="w-full sm:w-auto px-5 py-3 rounded-xl bg-ocean text-white text-sm font-semibold shadow-md hover:bg-ocean/90 transition"
+                    >
+                      Change Password
+                    </button>
+                  )}
                 </div>
 
                 {passwordError && (
@@ -422,46 +439,61 @@ export default function ClientPage() {
                   </div>
                 )}
 
-                <form onSubmit={handlePasswordChange} className="space-y-4">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        New Password
-                      </label>
-                      <input
-                        type="password"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="At least 6 characters"
-                        className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean bg-white"
-                        disabled={savingPassword}
-                      />
+                {showPasswordForm && (
+                  <form onSubmit={handlePasswordChange} className="space-y-4">
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          New Password
+                        </label>
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="At least 6 characters"
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean bg-white"
+                          disabled={savingPassword}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Confirm Password
+                        </label>
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Re-enter new password"
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean bg-white"
+                          disabled={savingPassword}
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Confirm Password
-                      </label>
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Re-enter new password"
-                        className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean bg-white"
-                        disabled={savingPassword}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="flex justify-end">
-                    <button
-                      type="submit"
-                      className="px-6 py-3 rounded-xl bg-ocean text-white text-sm font-semibold shadow-md hover:bg-ocean/90 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                      disabled={savingPassword}
-                    >
-                      {savingPassword ? "Saving..." : "Save Password"}
-                    </button>
-                  </div>
-                </form>
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+                      <button
+                        type="button"
+                        className="px-6 py-3 rounded-xl border border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition disabled:opacity-60"
+                        disabled={savingPassword}
+                        onClick={() => {
+                          setShowPasswordForm(false);
+                          setNewPassword("");
+                          setConfirmPassword("");
+                          setPasswordError("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-6 py-3 rounded-xl bg-ocean text-white text-sm font-semibold shadow-md hover:bg-ocean/90 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                        disabled={savingPassword}
+                      >
+                        {savingPassword ? "Saving..." : "Save Password"}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             ) : (
               <>
