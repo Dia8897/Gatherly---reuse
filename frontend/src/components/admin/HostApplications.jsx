@@ -40,6 +40,14 @@ const formatStatusLabel = (value = "") => {
   return "Pending";
 };
 
+const formatEmailNotificationStatus = (status) => {
+  if (status === "sent") return "Email notification sent.";
+  if (status === "mail_not_configured") return "Email notification not sent: Gmail is not configured.";
+  if (status === "missing_recipient") return "Email notification not sent: host email is missing.";
+  if (status === "failed") return "Email notification failed. Check the backend console.";
+  return "";
+};
+
 const normalizeApplication = (app) => {
   const firstName = app.applicantFirstName ?? app.fName;
   const lastName = app.applicantLastName ?? app.lName;
@@ -301,15 +309,19 @@ export default function HostApplications() {
   const handleHostLifecycle = async (userId, action) => {
     setHostActionState({ userId, action });
     try {
+      let response;
       if (action === "approve") {
-        await adminAPI.approveHostAccount(userId);
+        response = await adminAPI.approveHostAccount(userId);
       } else {
-        await adminAPI.blockHostAccount(userId);
+        response = await adminAPI.blockHostAccount(userId);
       }
       setPendingHosts((prev) => prev.filter((host) => host.userId !== userId));
+      const emailStatus = formatEmailNotificationStatus(response?.data?.emailNotification);
       setActionStatus({
         type: "success",
-        text: action === "approve" ? "Host approved." : "Host blocked.",
+        text: [action === "approve" ? "Host approved." : "Host blocked.", emailStatus]
+          .filter(Boolean)
+          .join("\n"),
       });
     } catch (err) {
       setActionStatus({
@@ -415,7 +427,7 @@ export default function HostApplications() {
         </div>
         {actionStatus?.text && (
           <div
-            className={`max-w-6xl mx-auto mt-4 rounded-2xl border px-4 py-3 text-sm ${
+            className={`max-w-6xl mx-auto mt-4 rounded-2xl border px-4 py-3 text-sm whitespace-pre-line ${
               actionStatus.type === "error"
                 ? "border-rose/30 bg-rose/10 text-rose-700"
                 : "border-mint/40 bg-mint/10 text-emerald-700"
