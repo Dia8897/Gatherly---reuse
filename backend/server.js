@@ -1,8 +1,8 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import "./config/env.js";
 import db from "./config/db.js";
 import eventRoutes from "./routes/eventRoutes.js";
 import applicationRoutes from "./routes/applicationRoutes.js";
@@ -15,8 +15,6 @@ import reviewRoutes from "./routes/reviewRoutes.js";
 import clothingRoutes from "./routes/clothingRoutes.js";
 import transportationRoutes from "./routes/transportationRoutes.js";
 import hostRoutes from "./routes/hostRoutes.js";
-
-dotenv.config();
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);

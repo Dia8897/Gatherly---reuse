@@ -1,11 +1,8 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
 import db from "../config/db.js";
+import "../config/env.js";
 import { verifyToken, isAdmin, requireActiveHost } from "../middleware/auth.js";
-
-//env variables
-dotenv.config();
 
 const router = Router();
 const MIN_STAR_RATING = 1;

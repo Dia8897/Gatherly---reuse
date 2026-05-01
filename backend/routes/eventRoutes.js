@@ -1,11 +1,33 @@
 import { Router } from "express";
 import db from "../config/db.js";
 import { verifyToken, isAdmin, isClient, isUserOrAdmin, isUser, requireActiveHost } from "../middleware/auth.js";
+import { summarizeEmailResult } from "../utils/email.js";
+import { sendEventApprovalEmail } from "../utils/notificationEmails.js";
 import { buildTransportationSummary } from "../utils/transportation.js";
 
 const router = Router();
 const ALLOWED_STATUSES = ["pending", "accepted", "rejected"];
 const HAS_TIME = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(?::\d{2})?/;
+
+const fetchEventWithClientById = async (eventId) => {
+  const [rows] = await db.query(
+    `SELECT e.eventId,
+            e.status,
+            e.title,
+            e.type,
+            e.location,
+            e.startsAt,
+            e.endsAt,
+            c.fName AS clientFirstName,
+            c.lName AS clientLastName,
+            c.email AS clientEmail
+       FROM EVENTS e
+  LEFT JOIN CLIENTS c ON c.clientId = e.clientId
+      WHERE e.eventId = ?`,
+    [eventId]
+  );
+  return rows[0];
+};
 
 // List all accepted events (public)
 router.get("/", async (_req, res) => {
@@ -463,9 +485,26 @@ router.put("/:id", verifyToken, isAdmin, async (req, res) => {
   values.push(id);
 
   try {
+    const previousEvent =
+      status === "accepted" ? await fetchEventWithClientById(id) : null;
+    if (status === "accepted" && !previousEvent) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
     const [result] = await db.query(`UPDATE EVENTS SET ${fields.join(", ")} WHERE eventId = ?`, values);
     if (result.affectedRows === 0) return res.status(404).json({ message: "Event not found" });
-    res.json({ message: "Event updated" });
+
+    let emailNotification;
+    if (status === "accepted" && previousEvent.status !== "accepted") {
+      const updatedEvent = await fetchEventWithClientById(id);
+      const emailResult = await sendEventApprovalEmail(updatedEvent || previousEvent);
+      emailNotification = summarizeEmailResult(emailResult);
+    }
+
+    res.json({
+      message: "Event updated",
+      ...(emailNotification ? { emailNotification } : {}),
+    });
   } catch (err) {
     console.error("Failed to update event", err);
     res.status(500).json({ message: "Failed to update event" });
