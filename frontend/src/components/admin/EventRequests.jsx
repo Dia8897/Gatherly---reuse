@@ -67,6 +67,14 @@ const toTitleCase = (value = "") =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ") || "General";
 
+const formatEmailNotificationStatus = (status) => {
+  if (status === "sent") return "Email notification sent.";
+  if (status === "mail_not_configured") return "Email notification not sent: Gmail is not configured.";
+  if (status === "missing_recipient") return "Email notification not sent: client email is missing.";
+  if (status === "failed") return "Email notification failed. Check the backend console.";
+  return "";
+};
+
 const normalizeRequest = (request) => {
   const clientName = [request.clientFirstName, request.clientLastName]
     .filter(Boolean)
@@ -281,9 +289,13 @@ export default function EventRequests() {
 
   const handleApprove = async (requestId) => {
     try {
-      await api.put(`/events/${requestId}`, { status: "accepted" });
+      const response = await api.put(`/events/${requestId}`, { status: "accepted" });
       updateRequestStatus(requestId, "Accepted");
-      setActionStatus({ type: "success", text: "Event approved successfully." });
+      const emailStatus = formatEmailNotificationStatus(response?.data?.emailNotification);
+      setActionStatus({
+        type: "success",
+        text: ["Event approved successfully.", emailStatus].filter(Boolean).join("\n"),
+      });
     } catch (err) {
       setActionStatus({
         type: "error",
@@ -531,7 +543,7 @@ export default function EventRequests() {
         </div>
         {actionStatus?.text && (
           <div
-            className={`max-w-6xl mx-auto mt-4 rounded-2xl border px-4 py-3 text-sm ${
+            className={`max-w-6xl mx-auto mt-4 rounded-2xl border px-4 py-3 text-sm whitespace-pre-line ${
               actionStatus.type === "error"
                 ? "border-rose/30 bg-rose/10 text-rose-700"
                 : "border-mint/40 bg-mint/10 text-emerald-700"

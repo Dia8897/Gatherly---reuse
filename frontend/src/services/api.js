@@ -1,7 +1,11 @@
 import axios from 'axios';
+import { clearAuthSession } from '../utils/authSession';
 
 const api = axios.create({
-  baseURL: process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:5050/api',  // Use proxy in dev
+  baseURL:
+    process.env.NODE_ENV === 'production'
+      ? '/api'
+      : process.env.REACT_APP_API_URL || 'http://localhost:5050/api',
 });
 
 // Add request interceptor for auth token if needed
@@ -10,6 +14,29 @@ api.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error.response?.status;
+    const message = error.response?.data?.message || "";
+    const isAuthEndpoint = String(error.config?.url || "").startsWith("/auth/");
+    const isSessionFailure =
+      !isAuthEndpoint &&
+      (status === 401 ||
+        message === "Invalid token" ||
+        message.toLowerCase().includes("session expired"));
+
+    if (isSessionFailure) {
+      clearAuthSession();
+      if (window.location.pathname !== "/") {
+        window.location.assign("/");
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 
 export const adminAPI = {
