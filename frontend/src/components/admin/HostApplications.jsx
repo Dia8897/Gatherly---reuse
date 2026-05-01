@@ -71,6 +71,10 @@ const normalizeApplication = (app) => {
       app.requestDress === true ||
       app.requestDress === "true" ||
       Number(app.requestDress) === 1,
+    needsRide:
+      app.needsRide === true ||
+      app.needsRide === "true" ||
+      Number(app.needsRide) === 1,
     eventTitle: app.eventTitle || "Event Title Unavailable",
     eventLocation: app.eventLocation || "Location Unavailable",
     eventDate: formatDate(app.eventDate) || "Date Unavailable",
@@ -722,6 +726,15 @@ export default function HostApplications() {
                           <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
                             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-gray-200 text-gray-700 font-medium">
                               Size: {app.clothingSize}
+                            </span>
+                            <span
+                              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border font-medium ${
+                                app.needsRide
+                                  ? "bg-blue-50 border-blue-200 text-blue-700"
+                                  : "bg-gray-50 border-gray-200 text-gray-600"
+                              }`}
+                            >
+                              {app.needsRide ? "Needs transportation" : "Self-arrival"}
                             </span>
                           </div>
                         </div>

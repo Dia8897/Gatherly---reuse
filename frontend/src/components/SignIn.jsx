@@ -7,6 +7,8 @@ import { getDashboardPath, storeAuthSession } from "../utils/authSession";
 
 const PENDING_GOOGLE_AUTH_KEY = "pendingGoogleAuth";
 let googleScriptPromise = null;
+let googleInitializedClientId = null;
+let googleCredentialHandler = null;
 
 const loadGoogleScript = () => {
   if (window.google?.accounts?.id) return Promise.resolve();
@@ -31,15 +33,23 @@ const loadGoogleScript = () => {
   return googleScriptPromise;
 };
 
+const initializeGoogleIdentity = (clientId) => {
+  if (googleInitializedClientId === clientId) return;
+  window.google.accounts.id.initialize({
+    client_id: clientId,
+    callback: (response) => googleCredentialHandler?.(response),
+  });
+  googleInitializedClientId = clientId;
+};
+
 function GoogleAuthButton({ mode, disabled, onCredential, onUnavailable }) {
   const containerRef = useRef(null);
-  const callbackRef = useRef(onCredential);
   const unavailableRef = useRef(onUnavailable);
   const [scriptReady, setScriptReady] = useState(false);
   const clientId = (process.env.REACT_APP_GOOGLE_CLIENT_ID || "").trim();
 
   useEffect(() => {
-    callbackRef.current = onCredential;
+    googleCredentialHandler = onCredential;
   }, [onCredential]);
 
   useEffect(() => {
@@ -53,10 +63,7 @@ function GoogleAuthButton({ mode, disabled, onCredential, onUnavailable }) {
     loadGoogleScript()
       .then(() => {
         if (cancelled) return;
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response) => callbackRef.current?.(response),
-        });
+        initializeGoogleIdentity(clientId);
         setScriptReady(true);
       })
       .catch(() => {

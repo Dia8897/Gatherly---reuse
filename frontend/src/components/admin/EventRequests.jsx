@@ -1063,6 +1063,11 @@ export default function EventRequests() {
                               app.requestDress === "true" ||
                               Number(app.requestDress) === 1
                           );
+                          const needsRide = Boolean(
+                            app.needsRide === true ||
+                              app.needsRide === "true" ||
+                              Number(app.needsRide) === 1
+                          );
                           return (
                             <div key={app.eventAppId} className="border border-gray-200 rounded-lg p-4 space-y-3">
                               <div className="flex items-start justify-between">
@@ -1084,6 +1089,16 @@ export default function EventRequests() {
                                   ) : (
                                     <span className="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-semibold">
                                       No dress request
+                                    </span>
+                                  )}
+                                  {needsRide ? (
+                                    <span className="mt-2 ml-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold">
+                                      <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                                      Needs transportation
+                                    </span>
+                                  ) : (
+                                    <span className="mt-2 ml-2 inline-flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-semibold">
+                                      Self-arrival
                                     </span>
                                   )}
                                 </div>

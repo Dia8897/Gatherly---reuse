@@ -3,7 +3,11 @@ import db from "../config/db.js";
 import bcrypt from "bcryptjs";
 import { verifyToken, isAdmin } from "../middleware/auth.js";
 import { summarizeEmailResult } from "../utils/email.js";
-import { sendEventApprovalEmail, sendHostApprovalEmail } from "../utils/notificationEmails.js";
+import {
+  sendEventApprovalEmail,
+  sendHostApprovalEmail,
+  sendHostEventAcceptanceEmail,
+} from "../utils/notificationEmails.js";
 import { buildTransportationSummary } from "../utils/transportation.js";
 // import { verify } from "jsonwebtoken";
 
@@ -443,6 +447,38 @@ const fetchEventWithClientById = async (eventId) => {
   return rows[0];
 };
 
+const fetchApplicationNotificationDetails = async (eventAppId) => {
+  const [rows] = await db.query(
+    `SELECT ea.eventAppId,
+            ea.requestedRole,
+            ea.assignedRole,
+            ea.requestDress,
+            u.fName AS hostFirstName,
+            u.lName AS hostLastName,
+            u.email AS hostEmail,
+            u.phoneNb AS hostPhone,
+            u.clothingSize,
+            e.title AS eventTitle,
+            e.type AS eventType,
+            e.description,
+            e.location,
+            e.startsAt,
+            e.endsAt,
+            e.nbOfGuests,
+            c.fName AS clientFirstName,
+            c.lName AS clientLastName,
+            c.email AS clientEmail,
+            c.phoneNb AS clientPhone
+       FROM EVENT_APP ea
+       JOIN USERS u ON u.userId = ea.senderId
+       JOIN EVENTS e ON e.eventId = ea.eventId
+  LEFT JOIN CLIENTS c ON c.clientId = e.clientId
+      WHERE ea.eventAppId = ?`,
+    [eventAppId]
+  );
+  return rows[0];
+};
+
 const logEmailNotification = (label, result) => {
   const status = summarizeEmailResult(result);
   console.info(`${label}: ${status}`);
@@ -854,7 +890,17 @@ router.put("/host-applications/:id/approve", verifyToken, isAdmin, async (req, r
       return res.status(404).json({ message: "Application not found or already processed" });
     }
 
-    res.json({ message: "Application approved" });
+    const notificationDetails = await fetchApplicationNotificationDetails(id);
+    const emailResult = await sendHostEventAcceptanceEmail(notificationDetails);
+    const emailNotification = logEmailNotification(
+      `Host event acceptance email notification for application ${id}`,
+      emailResult
+    );
+
+    res.json({
+      message: "Application approved",
+      emailNotification,
+    });
   } catch (err) {
     console.error("Failed to approve application", err);
     res.status(500).json({ message: "Failed to approve application" });

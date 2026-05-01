@@ -1,9 +1,49 @@
 import { Router } from "express";
 import db from "../config/db.js";
 import { verifyToken, isAdmin, isUserOrAdmin, requireActiveHost } from "../middleware/auth.js";
+import { summarizeEmailResult } from "../utils/email.js";
+import { sendHostEventAcceptanceEmail } from "../utils/notificationEmails.js";
 
 
 const router = Router();
+
+const fetchApplicationNotificationDetails = async (eventAppId) => {
+  const [rows] = await db.query(
+    `SELECT ea.eventAppId,
+            ea.requestedRole,
+            ea.assignedRole,
+            ea.requestDress,
+            u.fName AS hostFirstName,
+            u.lName AS hostLastName,
+            u.email AS hostEmail,
+            u.phoneNb AS hostPhone,
+            u.clothingSize,
+            e.title AS eventTitle,
+            e.type AS eventType,
+            e.description,
+            e.location,
+            e.startsAt,
+            e.endsAt,
+            e.nbOfGuests,
+            c.fName AS clientFirstName,
+            c.lName AS clientLastName,
+            c.email AS clientEmail,
+            c.phoneNb AS clientPhone
+       FROM EVENT_APP ea
+       JOIN USERS u ON u.userId = ea.senderId
+       JOIN EVENTS e ON e.eventId = ea.eventId
+  LEFT JOIN CLIENTS c ON c.clientId = e.clientId
+      WHERE ea.eventAppId = ?`,
+    [eventAppId]
+  );
+  return rows[0];
+};
+
+const logEmailNotification = (label, result) => {
+  const status = summarizeEmailResult(result);
+  console.info(`${label}: ${status}`);
+  return status;
+};
 
 
 router.get("/", verifyToken, isUserOrAdmin, async (req, res) => {
@@ -250,7 +290,7 @@ router.put("/:id", verifyToken, isAdmin, async (req, res) => {
     }
 
     // Only allow status changes from pending to accepted/rejected
-    if (status && currentStatus !== 'pending' && ['accepted', 'rejected'].includes(currentStatus)) {
+    if (status && status !== currentStatus && currentStatus !== 'pending' && ['accepted', 'rejected'].includes(currentStatus)) {
       return res.status(400).json({
         message: "Cannot modify status of an application that has already been decided"
       });
@@ -370,10 +410,42 @@ router.put("/:id", verifyToken, isAdmin, async (req, res) => {
       }
     }
 
+    let shouldDecrementStock = false;
+    let clothingStockParams = null;
+    if (currentStatus === "pending" && resultingStatus === 'accepted' && requestDress) {
+      // Get user's clothing size
+      const [userRows] = await db.query("SELECT clothingSize FROM USERS WHERE userId = ?", [senderId]);
+      if (userRows.length === 0) {
+        return res.status(400).json({ message: "User not found" });
+      }
+      const userSize = userRows[0].clothingSize;
+
+      const [eventRows] = await db.query("SELECT clothesId FROM EVENTS WHERE eventId = ?", [eventId]);
+      if (eventRows.length === 0) {
+        return res.status(400).json({ message: "Event not found" });
+      }
+      const clothesId = eventRows[0].clothesId;
+
+      if (clothesId && userSize) {
+        const [stockRows] = await db.query(
+          "SELECT stockQty FROM CLOTHING_STOCK WHERE clothingId = ? AND size = ?",
+          [clothesId, userSize]
+        );
+        if (stockRows.length === 0 || stockRows[0].stockQty <= 0) {
+          return res.status(409).json({ message: "Cannot accept application - insufficient stock for requested dress size" });
+        }
+        shouldDecrementStock = true;
+        clothingStockParams = [clothesId, userSize];
+      }
+    }
+
     const query = `UPDATE EVENT_APP SET ${setParts.join(', ')} WHERE eventAppId = ?`;
     values.push(id);
 
     const [result] = await db.query(query, values);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "Event application not found" });
+    }
 
     if (resultingStatus === 'accepted' && finalAssignedRole === 'team_leader') {
       await db.query(
@@ -382,40 +454,27 @@ router.put("/:id", verifyToken, isAdmin, async (req, res) => {
       );
     }
 
-    // Handle stock update for dress request on acceptance
-    if (resultingStatus === 'accepted' && requestDress) {
-      // Get user's clothing size
-      const [userRows] = await db.query("SELECT clothingSize FROM USERS WHERE userId = ?", [senderId]);
-      if (userRows.length === 0) {
-        return res.status(400).json({ message: "User not found" });
-      }
-      const userSize = userRows[0].clothingSize;
-
-      // Get event's clothesId
-      const [eventRows] = await db.query("SELECT clothesId FROM EVENTS WHERE eventId = ?", [eventId]);
-      if (eventRows.length === 0 || !eventRows[0].clothesId) {
-        return res.status(400).json({ message: "Event or clothing not found" });
-      }
-      const clothesId = eventRows[0].clothesId;
-
-      // Check and decrement stock
-      const [stockRows] = await db.query(
-        "SELECT stockQty FROM CLOTHING_STOCK WHERE clothingId = ? AND size = ?",
-        [clothesId, userSize]
+    if (shouldDecrementStock) {
+      await db.query(
+        "UPDATE CLOTHING_STOCK SET stockQty = stockQty - 1 WHERE clothingId = ? AND size = ?",
+        clothingStockParams
       );
-      if (stockRows.length > 0 && stockRows[0].stockQty > 0) {
-        await db.query(
-          "UPDATE CLOTHING_STOCK SET stockQty = stockQty - 1 WHERE clothingId = ? AND size = ?",
-          [clothesId, userSize]
-        );
-      } else {
-        // If no stock, reject the acceptance (rollback logic)
-        await db.query("UPDATE EVENT_APP SET status = 'pending' WHERE eventAppId = ?", [id]);
-        return res.status(409).json({ message: "Cannot accept application - insufficient stock for requested dress size" });
-      }
     }
 
-    res.json({ message: "Event application updated" });
+    let emailNotification;
+    if (currentStatus === "pending" && resultingStatus === "accepted") {
+      const notificationDetails = await fetchApplicationNotificationDetails(id);
+      const emailResult = await sendHostEventAcceptanceEmail(notificationDetails);
+      emailNotification = logEmailNotification(
+        `Host event acceptance email notification for application ${id}`,
+        emailResult
+      );
+    }
+
+    res.json({
+      message: "Event application updated",
+      ...(emailNotification ? { emailNotification } : {}),
+    });
   } catch (err) {
     console.error("Failed to update event application", err);
     if (err.code === 'ER_NO_REFERENCED_ROW_2') {

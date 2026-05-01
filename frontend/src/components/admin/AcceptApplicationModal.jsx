@@ -7,6 +7,10 @@ export default function AcceptApplicationModal({ application, onClose, onAccepte
   const [vehicleCapacity, setVehicleCapacity] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const needsRide =
+    application.needsRide === true ||
+    application.needsRide === "true" ||
+    Number(application.needsRide) === 1;
 
   const handleAccept = async () => {
     setError("");
@@ -75,7 +79,7 @@ export default function AcceptApplicationModal({ application, onClose, onAccepte
             </p>
           </div>
 
-          {application.requestTransportation && (
+          {needsRide && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
               <p className="text-sm font-medium text-blue-800 mb-2">
                 Transportation Requested
@@ -107,7 +111,7 @@ export default function AcceptApplicationModal({ application, onClose, onAccepte
             </div>
           )}
 
-          {!application.requestTransportation && (
+          {!needsRide && (
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
               <p className="text-sm text-gray-600">
                 No transportation requested
