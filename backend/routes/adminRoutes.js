@@ -14,6 +14,8 @@ const CLIENT_BASE_FIELDS = ["clientId", "fName", "lName", "email", "phoneNb", "a
 const CLIENT_SELECT_WITH_ALIAS = CLIENT_BASE_FIELDS.map((field) => `c.${field}`).join(", ");
 const CLOTHING_FIELDS = ["clothesId", "clothingLabel", "picture", "description"];
 const CLOTHING_SELECT = CLOTHING_FIELDS.join(", ");
+const STOCK_SIZE_ORDER =
+  "CASE WHEN FIELD(size, 'XS', 'S', 'M', 'L', 'XL', 'XXL') = 0 THEN 1 ELSE 0 END, FIELD(size, 'XS', 'S', 'M', 'L', 'XL', 'XXL'), size";
 
 // GET all event requests with client information (with optional status filter)
 router.get("/event-requests", verifyToken, isAdmin, async (req, res) => {
@@ -157,11 +159,11 @@ router.get("/clothing", verifyToken, isAdmin, async (_req, res) => {
      ORDER BY clothingLabel`
     );
 
-    const [stockRows] = await db.query(
-      `SELECT clothingId, size, stockQty
-         FROM CLOTHING_STOCK
-     ORDER BY clothingId, size`
-    );
+	    const [stockRows] = await db.query(
+	      `SELECT clothingId, size, stockQty
+	         FROM CLOTHING_STOCK
+	     ORDER BY clothingId, ${STOCK_SIZE_ORDER}`
+	    );
 
     const stockMap = new Map();
     stockRows.forEach((row) => {
@@ -235,7 +237,7 @@ router.post("/clothing", verifyToken, isAdmin, async (req, res) => {
 
 router.patch("/clothing/:clothesId/stock", verifyToken, isAdmin, async (req, res) => {
   const clothesId = Number(req.params.clothesId);
-  const { size, amount } = req.body || {};
+  const { size, amount, operation = "add" } = req.body || {};
 
   if (!Number.isInteger(clothesId) || clothesId <= 0) {
     return res.status(400).json({ message: "Invalid clothesId" });
@@ -244,9 +246,12 @@ router.patch("/clothing/:clothesId/stock", verifyToken, isAdmin, async (req, res
     return res.status(400).json({ message: "size is required" });
   }
   const normalizedSize = size.trim().toUpperCase();
-  const increment = Number(amount);
-  if (!Number.isInteger(increment) || increment <= 0) {
+  const quantity = Number(amount);
+  if (!Number.isInteger(quantity) || quantity <= 0) {
     return res.status(400).json({ message: "amount must be a positive integer" });
+  }
+  if (!["add", "remove"].includes(operation)) {
+    return res.status(400).json({ message: "operation must be 'add' or 'remove'" });
   }
 
   try {
@@ -255,17 +260,39 @@ router.patch("/clothing/:clothesId/stock", verifyToken, isAdmin, async (req, res
       return res.status(404).json({ message: "Clothing item not found" });
     }
 
-    await db.query(
-      `INSERT INTO CLOTHING_STOCK (clothingId, size, stockQty)
-       VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE stockQty = CLOTHING_STOCK.stockQty + VALUES(stockQty)`,
-      [clothesId, normalizedSize, increment]
-    );
+    if (operation === "add") {
+      await db.query(
+        `INSERT INTO CLOTHING_STOCK (clothingId, size, stockQty)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE stockQty = CLOTHING_STOCK.stockQty + VALUES(stockQty)`,
+        [clothesId, normalizedSize, quantity]
+      );
+    } else {
+      const [result] = await db.query(
+        `UPDATE CLOTHING_STOCK
+            SET stockQty = stockQty - ?
+          WHERE clothingId = ?
+            AND size = ?
+            AND stockQty >= ?`,
+        [quantity, clothesId, normalizedSize, quantity]
+      );
 
-    const [updatedStock] = await db.query(
-      "SELECT size, stockQty FROM CLOTHING_STOCK WHERE clothingId = ? ORDER BY size",
-      [clothesId]
-    );
+      if (result.affectedRows === 0) {
+        const [stockRows] = await db.query(
+          "SELECT stockQty FROM CLOTHING_STOCK WHERE clothingId = ? AND size = ?",
+          [clothesId, normalizedSize]
+        );
+        if (!stockRows.length) {
+          return res.status(404).json({ message: "No stock exists for that size" });
+        }
+        return res.status(409).json({ message: "Cannot remove more items than are in stock" });
+      }
+    }
+
+	    const [updatedStock] = await db.query(
+	      `SELECT size, stockQty FROM CLOTHING_STOCK WHERE clothingId = ? ORDER BY ${STOCK_SIZE_ORDER}`,
+	      [clothesId]
+	    );
 
     res.json({
       clothesId,
@@ -277,6 +304,66 @@ router.patch("/clothing/:clothesId/stock", verifyToken, isAdmin, async (req, res
   } catch (err) {
     console.error("Failed to update stock", err);
     res.status(500).json({ message: "Failed to update stock." });
+  }
+});
+
+router.patch("/clothing/:clothesId/stock/remove", verifyToken, isAdmin, async (req, res) => {
+  const clothesId = Number(req.params.clothesId);
+  const { size, amount } = req.body || {};
+
+  if (!Number.isInteger(clothesId) || clothesId <= 0) {
+    return res.status(400).json({ message: "Invalid clothesId" });
+  }
+  if (!size || !size.trim()) {
+    return res.status(400).json({ message: "size is required" });
+  }
+  const normalizedSize = size.trim().toUpperCase();
+  const quantity = Number(amount);
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    return res.status(400).json({ message: "amount must be a positive integer" });
+  }
+
+  try {
+    const [itemRows] = await db.query("SELECT clothesId FROM CLOTHING WHERE clothesId = ?", [clothesId]);
+    if (!itemRows.length) {
+      return res.status(404).json({ message: "Clothing item not found" });
+    }
+
+    const [result] = await db.query(
+      `UPDATE CLOTHING_STOCK
+          SET stockQty = stockQty - ?
+        WHERE clothingId = ?
+          AND size = ?
+          AND stockQty >= ?`,
+      [quantity, clothesId, normalizedSize, quantity]
+    );
+
+    if (result.affectedRows === 0) {
+      const [stockRows] = await db.query(
+        "SELECT stockQty FROM CLOTHING_STOCK WHERE clothingId = ? AND size = ?",
+        [clothesId, normalizedSize]
+      );
+      if (!stockRows.length) {
+        return res.status(404).json({ message: "No stock exists for that size" });
+      }
+      return res.status(409).json({ message: "Cannot remove more items than are in stock" });
+    }
+
+    const [updatedStock] = await db.query(
+      `SELECT size, stockQty FROM CLOTHING_STOCK WHERE clothingId = ? ORDER BY ${STOCK_SIZE_ORDER}`,
+      [clothesId]
+    );
+
+    res.json({
+      clothesId,
+      stock: updatedStock.map((entry) => ({
+        size: entry.size,
+        stockQty: Number(entry.stockQty),
+      })),
+    });
+  } catch (err) {
+    console.error("Failed to remove stock", err);
+    res.status(500).json({ message: "Failed to remove stock." });
   }
 });
 
